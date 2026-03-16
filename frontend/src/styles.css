@@ -1,0 +1,49 @@
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+    font-family: Inter, Arial;
+}
+
+.header {
+    height: 56px;
+    background: #0b1227;
+    color: white;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+}
+
+.container {
+    padding: 12px;
+}
+
+.leaflet-container {
+    height: calc(100vh - 56px);
+    width: 100%;
+}
+
+.topbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 320px;
+    margin: 12px;
+}
+
+.toast {
+    position: fixed;
+    right: 16px;
+    top: 76px;
+    background: #111;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+}
