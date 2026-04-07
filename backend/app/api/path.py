@@ -859,6 +859,7 @@ router = APIRouter(prefix="/api/path", tags=["path"])
 active_paths = {}
 drone_colors = {}
 drone_positions = {}
+simulation_tasks = {}
 global_clients = set()
 weather_zones = []
 color_palette = [
@@ -964,10 +965,12 @@ async def simulate(payload: dict):
     try:
         drone_id = int(payload["drone_id"])
         path = payload["path"]
-        speed = float(payload.get("speed_mps", 20))  # ⏩ Adjusted faster default
+        speed = float(payload.get("speed_mps", 30))
         altitude = float(payload.get("altitude_m", 100))
 
         if drone_id not in active_paths:
+            active_paths[drone_id] = path
+        else:
             active_paths[drone_id] = path
 
         if drone_id not in drone_colors:
@@ -977,9 +980,14 @@ async def simulate(payload: dict):
 
         color = drone_colors[drone_id]
 
-        asyncio.create_task(
+        existing_task = simulation_tasks.get(drone_id)
+        if existing_task and not existing_task.done():
+            existing_task.cancel()
+
+        task = asyncio.create_task(
             run_drone_simulation(drone_id, path, speed, altitude, color)
         )
+        simulation_tasks[drone_id] = task
 
         return {"ok": True, "message": f"Simulation started for drone {drone_id}"}
 
@@ -987,49 +995,102 @@ async def simulate(payload: dict):
         raise HTTPException(status_code=500, detail=f"Simulation error: {str(e)}")
 
 
+@router.post("/stop")
+async def stop_simulation(payload: dict):
+    try:
+        drone_id = int(payload["drone_id"])
+        task = simulation_tasks.get(drone_id)
+
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        await broadcast_to_all({"type": "simulation_stopped", "drone_id": drone_id})
+        return {"ok": True, "message": f"Simulation stopped for drone {drone_id}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stop simulation error: {str(e)}")
+
+
+@router.post("/clear")
+async def clear_drone_plan(payload: dict):
+    try:
+        drone_id = int(payload["drone_id"])
+        task = simulation_tasks.get(drone_id)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        simulation_tasks.pop(drone_id, None)
+        active_paths.pop(drone_id, None)
+        drone_positions.pop(drone_id, None)
+        drone_colors.pop(drone_id, None)
+
+        await broadcast_to_all({"type": "simulation_stopped", "drone_id": drone_id})
+        await broadcast_to_all({"type": "path_cleared", "drone_id": drone_id})
+        await broadcast_to_all({"type": "drone_removed", "drone_id": drone_id})
+        return {"ok": True, "message": f"Cleared drone {drone_id}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Clear error: {str(e)}")
+
+
 # ============================================================
 # 🧠 Simulation Logic with Dynamic Rerouting
 # ============================================================
 async def run_drone_simulation(drone_id, path, speed, altitude, color):
     global weather_zones
+    try:
+        async for status in simulate_path(drone_id, path, speed, altitude):
+            status_type = status.get("type", "drone_status")
 
-    async for status in simulate_path(drone_id, path, speed, altitude):
-        lat, lon = status["lat"], status["lon"]
-        drone_positions[drone_id] = (lat, lon)
+            if status_type == "simulation_complete":
+                await broadcast_to_all(
+                    {
+                        "type": "simulation_complete",
+                        "drone_id": drone_id,
+                    }
+                )
+                break
 
-        # ⚠️ Predictive Collision Avoidance
-        for other_id, (olat, olon) in drone_positions.items():
-            if other_id != drone_id:
-                dist = calculate_distance_km(lat, lon, olat, olon)
-                if dist < 0.05:  # 50 meters
-                    print(
-                        f"🚨 Predicted Collision between Drone {drone_id} & {other_id}"
-                    )
-                    await reroute_drone(drone_id, path, lat, lon)
-                    break
+            lat, lon = status["lat"], status["lon"]
+            drone_positions[drone_id] = (lat, lon)
 
-        # 🌦️ Dynamic Weather Updates
-        if random.random() < 0.02:  # 2% chance to update weather zone
-            weather_zones.append(random_weather_zone())
+            for other_id, (olat, olon) in drone_positions.items():
+                if other_id != drone_id:
+                    dist = calculate_distance_km(lat, lon, olat, olon)
+                    if dist < 0.05:
+                        print(
+                            f"🚨 Predicted Collision between Drone {drone_id} & {other_id}"
+                        )
+                        await reroute_drone(drone_id, path, lat, lon)
+                        break
 
-        if is_in_weather_zone(lat, lon):
-            print(f"🌩️ Drone {drone_id} entered bad weather zone — rerouting...")
-            await reroute_drone(drone_id, path, lat, lon)
-            continue
+            if random.random() < 0.02:
+                weather_zones.append(random_weather_zone())
 
-        # 🛰️ Broadcast live drone position
-        await broadcast_to_all(
-            {
-                "type": "drone_status",
-                "drone_id": drone_id,
-                "status": status,
-                "color": color,
-            }
-        )
+            if is_in_weather_zone(lat, lon):
+                print(f"🌩️ Drone {drone_id} entered bad weather zone — rerouting...")
+                await reroute_drone(drone_id, path, lat, lon)
+                continue
 
-        await asyncio.sleep(0.2)  # 🔧 Adjust speed here (smaller = faster)
+            await broadcast_to_all(
+                {
+                    "type": "drone_status",
+                    "drone_id": drone_id,
+                    "status": status,
+                    "color": color,
+                }
+            )
 
-    print(f"✅ Drone {drone_id} simulation complete.")
+    except asyncio.CancelledError:
+        raise
+    finally:
+        simulation_tasks.pop(drone_id, None)
 
 
 # ============================================================

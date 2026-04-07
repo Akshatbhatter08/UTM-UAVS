@@ -74,7 +74,7 @@ function Register({ onDone, onVerify }) {
         />
         <button type="submit">Register</button>
       </form>
-      {message && <p>{message}</p>}
+      {message && <p className="form-message">{message}</p>}
     </div>
   );
 }

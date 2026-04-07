@@ -13,13 +13,13 @@ export default function Login({ onDone }){
       onDone && onDone()
     }catch(e){ setErr('Login failed') }
   }
-  return (<div style={{display:'flex'}}>
+  return (<div>
     <div className='auth-form'>
       <h3>Login</h3>
       <input placeholder='email' value={email} onChange={e=>setEmail(e.target.value)} />
       <input placeholder='password' type='password' value={password} onChange={e=>setPassword(e.target.value)} />
       <button onClick={submit}>Login</button>
-      {err && <div style={{color:'red'}}>{err}</div>}
+      {err && <p className='form-message'>{err}</p>}
     </div>
   </div>)
 }

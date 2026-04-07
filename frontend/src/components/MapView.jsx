@@ -3230,18 +3230,45 @@ const goalIcon = new L.Icon({
   iconAnchor: [15, 15],
 });
 
+const mapThemes = {
+  streets: {
+    label: "Streets",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  dark: {
+    label: "Dark",
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
+  satellite: {
+    label: "Satellite",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution: "Tiles &copy; Esri",
+  },
+  terrain: {
+    label: "Terrain",
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
+  },
+};
+
 /* -------------------------
    CLICK PICKER
    ------------------------- */
-function ClickPicker({ setStart, setGoal }) {
+function ClickPicker({ startRef, goalRef, onStartSelected, onGoalSelected }) {
   useMapEvents({
     click(e) {
       const { lat, lng } = e.latlng;
-      if (!setStart.current) {
-        setStart.current = { lat, lon: lng };
+      if (!startRef.current) {
+        const point = { lat, lon: lng };
+        startRef.current = point;
+        onStartSelected(point);
         alert("✅ Start point selected!");
-      } else if (!setGoal.current) {
-        setGoal.current = { lat, lon: lng };
+      } else if (!goalRef.current) {
+        const point = { lat, lon: lng };
+        goalRef.current = point;
+        onGoalSelected(point);
         alert("✅ Destination selected!");
       }
     },
@@ -3276,6 +3303,10 @@ export default function MapView() {
   const [allDrones, setAllDrones] = useState({});
   const [isPlanning, setIsPlanning] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isSimulationActionLoading, setIsSimulationActionLoading] = useState(false);
+  const [selectedStart, setSelectedStart] = useState(null);
+  const [selectedGoal, setSelectedGoal] = useState(null);
+  const [mapTheme, setMapTheme] = useState("streets");
 
   const startRef = useRef(null);
   const goalRef = useRef(null);
@@ -3347,22 +3378,50 @@ export default function MapView() {
       return;
     }
 
-    setIsSimulating(true);
+    setIsSimulationActionLoading(true);
     try {
       await axios.post("http://localhost:8000/api/path/simulate", {
         drone_id: droneId,
         path,
-        speed_mps: 12,
+        speed_mps: 30,
         altitude_m: 100,
       });
 
+      setIsSimulating(true);
       alert(`🚀 Simulation started for your Drone ${droneId}.`);
     } catch (err) {
       console.error("Simulation error:", err);
       alert("Failed to start simulation.");
     } finally {
-      setIsSimulating(false);
+      setIsSimulationActionLoading(false);
     }
+  };
+
+  const stopSimulation = async () => {
+    const droneId = userDroneIdRef.current;
+    if (!droneId) return;
+
+    setIsSimulationActionLoading(true);
+    try {
+      await axios.post("http://localhost:8000/api/path/stop", {
+        drone_id: droneId,
+      });
+      setIsSimulating(false);
+      alert(`🛑 Simulation stopped for your Drone ${droneId}.`);
+    } catch (err) {
+      console.error("Stop simulation error:", err);
+      alert("Failed to stop simulation.");
+    } finally {
+      setIsSimulationActionLoading(false);
+    }
+  };
+
+  const handleSimulationAction = () => {
+    if (isSimulating) {
+      stopSimulation();
+      return;
+    }
+    startSimulation();
   };
 
   /* -------------------------
@@ -3399,6 +3458,34 @@ export default function MapView() {
         }));
       } else if (data.type === "simulation_complete") {
         alert(`✅ Drone ${droneKey} finished simulation.`);
+        if (droneKey === "Drone-" + userDroneIdRef.current) {
+          setIsSimulating(false);
+        }
+      } else if (data.type === "simulation_stopped") {
+        if (droneKey === "Drone-" + userDroneIdRef.current) {
+          setIsSimulating(false);
+        }
+      } else if (data.type === "path_cleared") {
+        setAllPaths((prev) => {
+          const next = { ...prev };
+          delete next[droneKey];
+          return next;
+        });
+        setPathColors((prev) => {
+          const next = { ...prev };
+          delete next[droneKey];
+          return next;
+        });
+      } else if (data.type === "drone_removed") {
+        setAllDrones((prev) => {
+          const next = { ...prev };
+          delete next[droneKey];
+          return next;
+        });
+        if (droneKey === "Drone-" + userDroneIdRef.current) {
+          setIsSimulating(false);
+          userDroneIdRef.current = null;
+        }
       }
     };
 
@@ -3409,43 +3496,71 @@ export default function MapView() {
      CLEAR USER POINTS
      ------------------------- */
   const clearPlan = () => {
+    const droneId = userDroneIdRef.current;
+    const droneKey = droneId ? "Drone-" + droneId : null;
+
     startRef.current = null;
     goalRef.current = null;
-    alert("Cleared selected start/destination points!");
+    setSelectedStart(null);
+    setSelectedGoal(null);
+    setIsSimulating(false);
+
+    if (droneKey) {
+      setAllPaths((prev) => {
+        const next = { ...prev };
+        delete next[droneKey];
+        return next;
+      });
+      setPathColors((prev) => {
+        const next = { ...prev };
+        delete next[droneKey];
+        return next;
+      });
+      setAllDrones((prev) => {
+        const next = { ...prev };
+        delete next[droneKey];
+        return next;
+      });
+      userDroneIdRef.current = null;
+      axios
+        .post("http://localhost:8000/api/path/clear", { drone_id: droneId })
+        .catch((err) => console.error("Clear plan error:", err));
+    }
+
+    alert("Cleared selected points, markers, and your drone path.");
   };
 
   /* -------------------------
      RENDER MAP
      ------------------------- */
   return (
-    <div style={{ height: "100vh", width: "100%", position: "relative" }}>
-      {/* Control Panel */}
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 12,
-          zIndex: 1400,
-          background: "white",
-          padding: 10,
-          borderRadius: 6,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-        }}
-      >
-        <h4 style={{ margin: "0 0 6px 0" }}>UAV Shared Flight Planner</h4>
-        <div style={{ fontSize: 12, marginBottom: 8 }}>
+    <div style={{ height: "100%", width: "100%", position: "relative" }}>
+      <div className="map-control-panel">
+        <h4 className="map-control-title">UAV Shared Flight Planner</h4>
+        <div className="map-control-meta">
           Click map twice: first = Start, second = Goal
         </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div className="map-control-actions">
           <button onClick={planPath} disabled={isPlanning}>
             {isPlanning ? "Planning..." : "Plan Path"}
           </button>
-          <button onClick={startSimulation} disabled={isSimulating}>
-            {isSimulating ? "Simulating..." : "Start Simulation"}
+          <button onClick={handleSimulationAction} disabled={isSimulationActionLoading}>
+            {isSimulationActionLoading
+              ? "Processing..."
+              : isSimulating
+                ? "Stop Simulation"
+                : "Start Simulation"}
           </button>
           <button onClick={clearPlan}>Clear Points</button>
+          <select value={mapTheme} onChange={(e) => setMapTheme(e.target.value)}>
+            {Object.entries(mapThemes).map(([value, theme]) => (
+              <option key={value} value={value}>
+                {theme.label}
+              </option>
+            ))}
+          </select>
         </div>
-        <div style={{ fontSize: 12 }}>
+        <div className="map-control-stats">
           Active drones: {Object.keys(allDrones).length}
           <br />
           Shared paths: {Object.keys(allPaths).length}
@@ -3458,7 +3573,11 @@ export default function MapView() {
         zoom={6}
         style={{ height: "100%", width: "100%" }}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer
+          key={mapTheme}
+          url={mapThemes[mapTheme].url}
+          attribution={mapThemes[mapTheme].attribution}
+        />
 
         {/* Geofences
         {geofences.map((gf, idx) => (
@@ -3534,6 +3653,18 @@ export default function MapView() {
           );
         })}
 
+        {selectedStart && (
+          <Marker position={[selectedStart.lat, selectedStart.lon]} icon={startIcon}>
+            <Popup>🚀 Selected Start</Popup>
+          </Marker>
+        )}
+
+        {selectedGoal && (
+          <Marker position={[selectedGoal.lat, selectedGoal.lon]} icon={goalIcon}>
+            <Popup>🎯 Selected Destination</Popup>
+          </Marker>
+        )}
+
         {/* Drone markers */}
         {Object.entries(allDrones).map(([id, d]) => {
           const color = pathColors[id] || "#008000";
@@ -3552,7 +3683,12 @@ export default function MapView() {
           );
         })}
 
-        <ClickPicker setStart={startRef} setGoal={goalRef} />
+        <ClickPicker
+          startRef={startRef}
+          goalRef={goalRef}
+          onStartSelected={setSelectedStart}
+          onGoalSelected={setSelectedGoal}
+        />
         <FitMap allPaths={allPaths} />
       </MapContainer>
     </div>

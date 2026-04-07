@@ -168,33 +168,41 @@ function App() {
 
   useEffect(() => {
     fetch('http://localhost:8000/')
-      .then(r => r.json())
-      .then(d => setStatus(d.message))
+      .then((r) => r.json())
+      .then((d) => setStatus(d.message))
       .catch(() => setStatus('Backend unreachable'));
   }, []);
 
+  const logout = () => {
+    localStorage.removeItem('token');
+    window.location.reload();
+  };
+
+  const isLoggedIn = Boolean(getToken());
+
   return (
-    <div style={{ height: '100%' }}>
-      <div className="header">
-        <div style={{ flex: 1 }}>{status}</div>
+    <div className="app-shell">
+      <header className="header">
+        <div className="brand-wrap">
+          <div className="brand-title">UTM UAV Control Center</div>
+          <div className="brand-subtitle">Real-time planning and monitoring</div>
+        </div>
         <div className="topbar">
-          <button onClick={() => setPage('map')}>Map</button>
-          <button onClick={() => setPage('flight')}>Flight Plan</button>
-          {!getToken() ? (
+          <span className="status-pill">{status}</span>
+          <button className={page === 'map' ? 'active' : ''} onClick={() => setPage('map')}>Map</button>
+          <button className={page === 'flight' ? 'active' : ''} onClick={() => setPage('flight')}>Flight Plan</button>
+          {!isLoggedIn ? (
             <>
-              <button onClick={() => setPage('login')}>Login</button>
-              <button onClick={() => setPage('register')}>Register</button>
+              <button className={page === 'login' ? 'active' : ''} onClick={() => setPage('login')}>Login</button>
+              <button className={page === 'register' ? 'active' : ''} onClick={() => setPage('register')}>Register</button>
             </>
           ) : (
-            <button onClick={() => {
-              localStorage.removeItem('token');
-              window.location.reload();
-            }}>Logout</button>
+            <button className="danger-btn" onClick={logout}>Logout</button>
           )}
         </div>
-      </div>
+      </header>
 
-      <div className="container">
+      <main className="container">
         {page === 'map' && (
           <ErrorBoundary>
             <MapView />
@@ -206,7 +214,7 @@ function App() {
         )}
         {page === 'verify' && <VerifyEmail onDone={() => setPage('login')} />}
         {page === 'flight' && <FlightPlan />}
-      </div>
+      </main>
     </div>
   );
 }

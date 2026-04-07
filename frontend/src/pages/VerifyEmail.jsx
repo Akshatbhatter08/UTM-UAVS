@@ -54,7 +54,7 @@ function VerifyEmail({ onDone }) {
           {loading ? "Verifying..." : "Verify"}
         </button>
       </form>
-      {message && <p>{message}</p>}
+      {message && <p className="form-message">{message}</p>}
     </div>
   );
 }

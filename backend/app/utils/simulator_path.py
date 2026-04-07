@@ -201,12 +201,12 @@ from typing import List, Tuple, Dict, Optional, AsyncGenerator
 SAFE_DISTANCE_M = 30.0  # if predicted closest approach < SAFE_DISTANCE_M -> avoid
 PREDICTION_SECONDS = 6.0  # seconds ahead to predict collisions
 MIN_SPEED_MPS = 1.0  # lower bound on speed on slowdowns
-DEFAULT_SPEED_MPS = 10.0  # default cruising speed
+DEFAULT_SPEED_MPS = 24.0  # default cruising speed
 WEATHER_SLOW_FACTOR = 0.5  # multiply speed by this inside weather zone
 REPLAN_COOLDOWN = 2.0  # seconds to wait after issuing reroute before next reroute
 GRID_RES_DEG = 0.0005  # grid resolution for A* ~ ~50m (approx)
 ASTAR_MAX_NODES = 12000  # hard cap to avoid runaway A*
-SIM_STEP_SECONDS = 0.5  # how often we yield status (seconds)
+SIM_STEP_SECONDS = 0.12  # how often we yield status (seconds)
 EARTH_R = 6371000.0  # meters
 
 # ------------------------

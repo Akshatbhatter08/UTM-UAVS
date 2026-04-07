@@ -15,13 +15,13 @@ export default function FlightPlan(){
       setMsg('Flight plan submitted')
     }catch(e){ setMsg('Error submitting') }
   }
-  return (<div style={{maxWidth:600}}>
+  return (<div className='flight-plan-card'>
     <h3>Submit Flight Plan</h3>
     <label>Drone ID</label>
     <input value={droneId} onChange={e=>setDroneId(e.target.value)} />
     <label>Waypoints (JSON array)</label>
-    <textarea value={waypoints} onChange={e=>setWaypoints(e.target.value)} rows={6} style={{width:'100%'}} />
+    <textarea value={waypoints} onChange={e=>setWaypoints(e.target.value)} rows={7} />
     <button onClick={submit}>Submit</button>
-    {msg && <div>{msg}</div>}
+    {msg && <p className='form-message'>{msg}</p>}
   </div>)
 }
